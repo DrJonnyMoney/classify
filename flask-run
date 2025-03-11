@@ -2,12 +2,6 @@
 cd /home/jovyan/webapp
 exec 2>&1
 
-# Get the Jupyter Service Prefix if available
-if [ -n "$JUPYTER_SERVICE_PREFIX" ]; then
-  echo "Running with JUPYTER_SERVICE_PREFIX=$JUPYTER_SERVICE_PREFIX"
-  export SCRIPT_NAME="$JUPYTER_SERVICE_PREFIX"
-fi
-
 # Run Gunicorn with appropriate settings for reverse proxy
 exec python -m gunicorn --bind 0.0.0.0:8888 \
   --forwarded-allow-ips="*" \
