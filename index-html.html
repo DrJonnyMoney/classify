@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResNet18 Image Classification</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .upload-section {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+        }
+        #file-input {
+            display: none;
+        }
+        .upload-btn {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        .upload-btn:hover {
+            background-color: #2980b9;
+        }
+        #preview-container {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        #image-preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 4px;
+        }
+        #results-container {
+            display: none;
+            margin-top: 20px;
+        }
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .results-table th, .results-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .results-table th {
+            background-color: #f1f1f1;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #ecf0f1;
+            border-radius: 10px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+        .progress {
+            height: 100%;
+            background-color: #2ecc71;
+            border-radius: 10px;
+        }
+        #loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #3498db;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        .metadata {
+            font-size: 14px;
+            color: #7f8c8d;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .error {
+            color: #e74c3c;
+            padding: 10px;
+            background-color: #fadbd8;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ResNet18 Image Classification</h1>
+        
+        <div class="upload-section">
+            <p>Upload an image to classify with ResNet18 model</p>
+            <input type="file" id="file-input" accept="image/*">
+            <button class="upload-btn" id="upload-btn">Choose Image</button>
+            <div id="error-message" class="error"></div>
+        </div>
+        
+        <div id="preview-container">
+            <h3>Image Preview</h3>
+            <img id="image-preview" src="" alt="Preview">
+            <button class="upload-btn" id="predict-btn" style="margin-top: 10px;">Classify Image</button>
+        </div>
+        
+        <div id="loading">
+            <div class="spinner"></div>
+            <p>Processing image...</p>
+        </div>
+        
+        <div id="results-container">
+            <h3>Classification Results</h3>
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>Class</th>
+                        <th>Probability</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody id="results-body">
+                </tbody>
+            </table>
+            <div class="metadata">
+                <p>Inference time: <span id="inference-time">0</span> seconds</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Make paths work within Kubeflow's URL structure
+        function fixUrl(url) {
+            // Get the current path without the filename
+            const basePath = window.location.pathname.replace(/\/[^/]*$/, '');
+            // If the URL starts with /, prepend the base path
+            if (url.startsWith('/')) {
+                return basePath + url;
+            }
+            return url;
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('file-input');
+            const uploadBtn = document.getElementById('upload-btn');
+            const predictBtn = document.getElementById('predict-btn');
+            const previewContainer = document.getElementById('preview-container');
+            const imagePreview = document.getElementById('image-preview');
+            const resultsContainer = document.getElementById('results-container');
+            const resultsBody = document.getElementById('results-body');
+            const loadingElement = document.getElementById('loading');
+            const inferenceTimeElement = document.getElementById('inference-time');
+            const errorMessage = document.getElementById('error-message');
+            
+            // Upload button click handler
+            uploadBtn.addEventListener('click', function() {
+                fileInput.click();
+            });
+            
+            // File input change handler
+            fileInput.addEventListener('change', function() {
+                if (fileInput.files && fileInput.files[0]) {
+                    const file = fileInput.files[0];
+                    
+                    // Check if the file is an image
+                    if (!file.type.match('image.*')) {
+                        showError('Please select an image file (JPEG, PNG, etc.)');
+                        return;
+                    }
+                    
+                    // Reset error message
+                    hideError();
+                    
+                    // Create file reader to display image preview
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imagePreview.src = e.target.result;
+                        previewContainer.style.display = 'block';
+                        resultsContainer.style.display = 'none';
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            // Predict button click handler
+            predictBtn.addEventListener('click', function() {
+                if (fileInput.files && fileInput.files[0]) {
+                    // Show loading spinner
+                    loadingElement.style.display = 'block';
+                    resultsContainer.style.display = 'none';
+                    
+                    // Create form data
+                    const formData = new FormData();
+                    formData.append('file', fileInput.files[0]);
+                    
+                    // Make API request
+                    fetch(fixUrl('/predict'), {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Hide loading spinner
+                        loadingElement.style.display = 'none';
+                        
+                        if (data.error) {
+                            showError('Error: ' + data.error);
+                            return;
+                        }
+                        
+                        // Display results
+                        displayResults(data);
+                    })
+                    .catch(error => {
+                        loadingElement.style.display = 'none';
+                        showError('Error: ' + error.message);
+                    });
+                }
+            });
+            
+            // Function to display results
+            function displayResults(data) {
+                // Clear previous results
+                resultsBody.innerHTML = '';
+                
+                // Add each prediction to the table
+                data.predictions.forEach(prediction => {
+                    const row = document.createElement('tr');
+                    
+                    const classCell = document.createElement('td');
+                    classCell.textContent = prediction.class;
+                    
+                    const probCell = document.createElement('td');
+                    probCell.textContent = prediction.probability.toFixed(2) + '%';
+                    
+                    const barCell = document.createElement('td');
+                    const progressBar = document.createElement('div');
+                    progressBar.className = 'progress-bar';
+                    const progress = document.createElement('div');
+                    progress.className = 'progress';
+                    progress.style.width = prediction.probability + '%';
+                    
+                    progressBar.appendChild(progress);
+                    barCell.appendChild(progressBar);
+                    
+                    row.appendChild(classCell);
+                    row.appendChild(probCell);
+                    row.appendChild(barCell);
+                    
+                    resultsBody.appendChild(row);
+                });
+                
+                // Update inference time
+                inferenceTimeElement.textContent = data.processing_time.toFixed(3);
+                
+                // Show results container
+                resultsContainer.style.display = 'block';
+            }
+            
+            // Error handling functions
+            function showError(message) {
+                errorMessage.textContent = message;
+                errorMessage.style.display = 'block';
+            }
+            
+            function hideError() {
+                errorMessage.textContent = '';
+                errorMessage.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
