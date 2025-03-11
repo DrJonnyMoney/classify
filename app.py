@@ -148,93 +148,11 @@ def predict():
 def catch_all(path):
     """Handle routes that aren't covered by specific endpoints and render the main page"""
     # Exclude API endpoints from catch-all
-    if path.startswith('predict'):
+    if path == 'predict':
         return jsonify({'error': 'Method not allowed'}), 405
         
     print(f"Caught path: {path}")
     return render_template('index.html')
-
-@app.route('/static/<path:filename>')
-def serve_static(filename):
-    """Serve static files"""
-    return send_from_directory('static', filename)
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    """Process the uploaded image and return predictions"""
-    print(f"Received prediction request at {time.strftime('%H:%M:%S')}")
-    
-    if 'file' not in request.files:
-        print("Error: No file part in request")
-        return jsonify({'error': 'No file part'})
-    
-    file = request.files['file']
-    
-    if file.filename == '':
-        print("Error: Empty filename")
-        return jsonify({'error': 'No selected file'})
-    
-    try:
-        print(f"Processing file: {file.filename}")
-        
-        # Read the image
-        img_bytes = file.read()
-        img = Image.open(io.BytesIO(img_bytes))
-        print(f"Image opened: {img.format}, size: {img.size}, mode: {img.mode}")
-        
-        # Convert RGBA to RGB if needed
-        if img.mode == 'RGBA':
-            print("Converting RGBA to RGB")
-            img = img.convert('RGB')
-        
-        # Preprocess the image
-        print("Preprocessing image...")
-        preprocess_start = time.time()
-        input_tensor = preprocess(img)
-        input_batch = input_tensor.unsqueeze(0)  # Add batch dimension
-        input_batch = input_batch.to(device)
-        print(f"Preprocessing completed in {time.time() - preprocess_start:.2f} seconds")
-        
-        # Perform inference
-        print("Running inference...")
-        inference_start = time.time()
-        with torch.no_grad():
-            output = model(input_batch)
-        inference_time = time.time() - inference_start
-        print(f"Inference completed in {inference_time:.2f} seconds")
-        
-        # Get top 5 predictions
-        print("Processing results...")
-        probabilities = torch.nn.functional.softmax(output[0], dim=0)
-        top5_prob, top5_catid = torch.topk(probabilities, 5)
-        
-        # Format results
-        results = []
-        for i in range(top5_prob.size(0)):
-            class_index = top5_catid[i].item()
-            if class_index < len(classes):
-                class_name = classes[class_index]
-            else:
-                class_name = f"Unknown class (index {class_index})"
-            
-            results.append({
-                'class': class_name,
-                'probability': float(top5_prob[i].item()) * 100
-            })
-        
-        print(f"Top prediction: {results[0]['class']} ({results[0]['probability']:.2f}%)")
-        print(f"Total processing time: {time.time() - preprocess_start:.2f} seconds")
-        
-        return jsonify({
-            'predictions': results,
-            'processing_time': inference_time
-        })
-    
-    except Exception as e:
-        print(f"Error during prediction: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)})
 
 if __name__ == '__main__':
     print("Starting Flask server...")
