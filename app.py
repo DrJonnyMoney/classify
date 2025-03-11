@@ -66,7 +66,8 @@ classes = load_imagenet_classes()
 
 # Define the predict route first so it takes precedence over the catch-all
 @app.route('/predict', methods=['POST'])
-def predict():
+@app.route('/notebook/<username>/<notebook_name>/predict', methods=['POST'])
+def predict(username=None, notebook_name=None):
     """Process the uploaded image and return predictions"""
     print(f"Received prediction request at {time.strftime('%H:%M:%S')}")
     
