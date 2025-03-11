@@ -8,12 +8,11 @@ USER root
 RUN pip install --no-cache-dir torch torchvision pillow flask gunicorn
 
 # Create app directories
-RUN mkdir -p /tmp_home/jovyan/webapp/static /tmp_home/jovyan/webapp/templates
+RUN mkdir -p /tmp_home/jovyan/webapp/templates
 
 # Copy application files to the temporary home directory
 COPY app.py /tmp_home/jovyan/webapp/
 COPY templates/ /tmp_home/jovyan/webapp/templates/
-COPY static/ /tmp_home/jovyan/webapp/static/
 
 # Set correct permissions
 RUN chown -R ${NB_USER}:${NB_GID} /tmp_home/jovyan/webapp
@@ -25,13 +24,7 @@ RUN rm -f /etc/services.d/code-server/run || true
 RUN mkdir -p /etc/services.d/flask
 
 # Create the run script for Flask
-RUN cat > /etc/services.d/flask/run << 'EOF'
-#!/command/with-contenv bash
-cd /home/jovyan/webapp
-exec 2>&1
-exec python -m gunicorn --bind 0.0.0.0:8888 --workers 1 app:app
-EOF
-
+COPY flask-run /etc/services.d/flask/run
 RUN chmod 755 /etc/services.d/flask/run && \
     chown ${NB_USER}:${NB_GID} /etc/services.d/flask/run
 
